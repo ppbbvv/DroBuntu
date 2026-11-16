@@ -58,6 +58,9 @@ class PcKeyboardPanelTest {
                 )
             }
         }
+        // A touch in the first moments after boot reads as the second tap of a double tap.
+        compose.mainClock.advanceTimeBy(BOOTED_MS)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(BOOTED_MS))
         compose.waitForIdle()
     }
 
@@ -158,5 +161,9 @@ class PcKeyboardPanelTest {
     private fun settle() {
         compose.waitForIdle()
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200))
+    }
+
+    private companion object {
+        const val BOOTED_MS = 2_000L
     }
 }
