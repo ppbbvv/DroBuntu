@@ -14,7 +14,8 @@ enum class SecondScreenMode(val id: String, @StringRes val label: Int, val bindi
     DECK_CONTROLS("deck-controls", R.string.second_mode_deck_controls, InputStockLayouts.DECK),
     CUSTOM_CONTROLS("custom-controls", R.string.input_profile_controls_mode),
     DASHBOARD("dashboard", R.string.second_mode_dashboard),
-    DESKTOP("desktop", R.string.second_mode_desktop);
+    DESKTOP("desktop", R.string.second_mode_desktop),
+    PC_KEYBOARD("pc-keyboard", R.string.drawer_pc_keyboard);
 
     val controls: Boolean get() = this == CUSTOM_CONTROLS || bindings != null
 

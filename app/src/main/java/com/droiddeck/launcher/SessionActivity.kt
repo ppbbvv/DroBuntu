@@ -285,7 +285,8 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback, com.droidde
     private var controllerSettings by mutableStateOf<ControllerPrefs.Settings?>(null)
     private val sessionClipboard by lazy {
         SessionClipboard(this) {
-            window.decorView.hasWindowFocus() || secondScreenPresentation?.window?.decorView?.hasWindowFocus() == true
+            window.decorView.hasWindowFocus() || secondScreenPresentation?.window?.decorView?.hasWindowFocus() == true ||
+                bottomGame?.focused == true
         }
     }
     private var watching = true
@@ -654,6 +655,8 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback, com.droidde
     private val displayListener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) {
             notifyActivityDisplayStateChanged(displayId)
+            claimExternalTop()
+            updateBottomGame()
             refreshSecondScreenDisplays()
         }
         override fun onDisplayRemoved(displayId: Int) {
@@ -665,6 +668,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback, com.droidde
         override fun onDisplayChanged(displayId: Int) {
             notifyActivityDisplayStateChanged(displayId)
             followPanelRefresh(displayId)
+            claimExternalTop()
             updateBottomGame()
             refreshSecondScreenDisplays()
         }
@@ -769,6 +773,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback, com.droidde
             SessionState.secondScreenProvisional = false
             SessionState.secondScreenAutomatic = false
             SessionState.gameOnBottom = false
+            SessionState.externalTopClaimed = false
             gameOnBottom = false
         }
         if (!SessionState.running && SessionState.phase in setOf(SessionPhase.IDLE, SessionPhase.FAILED)) {
@@ -4142,7 +4147,8 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback, com.droidde
                 )
             }
         },
-        onSwap = if (bottomSwapAvailable && com.droiddeck.launcher.input.DualScreen.builtIn(target)) ({ putGameOnBottom(true) }) else null,
+        onSwap = if (bottomSwapAvailable && (com.droiddeck.launcher.input.DualScreen.builtIn(target) ||
+                target.displayId == externalTopDisplay()?.displayId)) ({ putGameOnBottom(true) }) else null,
         onDeckPanel = ::selectDeckPanel,
         dashboard = if (bottomPages().isEmpty()) null else ({
             DroidDeckTheme {
@@ -5441,6 +5447,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback, com.droidde
         SessionService.setActivityVisible(this, true, sessionActivityDisplayId)
         Glasses.rescan()
         updateGlassesScreen()
+        claimExternalTop()
         updateBottomGame()
         updateHandCamera()
     }
@@ -5490,7 +5497,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback, com.droidde
     override fun onResume() {
         super.onResume()
         drawerGameInventoryRevision++
-        com.droiddeck.launcher.input.SystemKeyCapture.attach(this, { hasWindowFocus() && !appUiOwnsPointer() && CompositorHost.isStarted }) { event ->
+        com.droiddeck.launcher.input.SystemKeyCapture.attach(this, { (hasWindowFocus() || bottomGame?.focused == true) && !appUiOwnsPointer() && CompositorHost.isStarted }) { event ->
             com.droiddeck.launcher.input.GuestKeys.send(event) { code, down -> sendGuestKey(code, down, 8) }
         }
         if (refreshActivityDisplayId() && started) {
@@ -5836,10 +5843,35 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback, com.droidde
         if (surfaceView.holder.surface?.isValid == true) surfaceCreated(surfaceView.holder)
     }
 
+    private fun externalTopDisplay(): Display? =
+        if (!::displayManager.isInitialized) null
+        else com.droiddeck.launcher.input.ExternalTopScreen.display(this, displayManager, shownOnDisplayId)
+
     private fun bottomGameDisplay(): Display? {
         if (!::displayManager.isInitialized) return null
         return com.droiddeck.launcher.input.DualScreen.sessionDisplay(this, displayManager, shownOnDisplayId)
             ?.takeIf { it.isValid && com.droiddeck.launcher.input.DualScreen.builtIn(it) }
+            ?: externalTopDisplay()
+    }
+
+    private fun claimExternalTop() {
+        if (SessionState.externalTopClaimed || gameOnBottom || !started || ended || pipUi) return
+        if (glassesScreen != null || bottomGame != null) return
+        val target = bottomGameDisplay() ?: return
+        if (com.droiddeck.launcher.input.DualScreen.builtIn(target)) return
+        SessionState.externalTopClaimed = true
+        Log.i(TAG, "external screen ${target.name} found - the session moves onto it")
+        putGameOnBottom(true)
+    }
+
+    private fun openSwappedPanel(target: Display) {
+        if (secondScreenMode != SecondScreenMode.NONE || com.droiddeck.launcher.input.DualScreen.builtIn(target)) return
+        selectedSecondScreenDisplay = target.displayId
+        panelMode(com.droiddeck.launcher.input.ExternalTopScreen.panel(SessionPrefs.secondScreenPanel(this, desktopSession)))
+    }
+
+    fun sendPanelKey(code: Int, down: Boolean) {
+        if (CompositorHost.isStarted) sendGuestKey(code, down, 32)
     }
 
     private fun putGameOnBottom(on: Boolean) {
@@ -5874,7 +5906,8 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback, com.droidde
         }
         if (shown != null) {
             closeSecondScreen(reset = false)
-            val screen = com.droiddeck.launcher.ui.BottomGameScreen(this, shown, this, ::onBottomGameTouch, ::onBottomGameHover)
+            val screen = com.droiddeck.launcher.ui.BottomGameScreen(this, shown, this, ::onBottomGameTouch, ::onBottomGameHover,
+                takesFocus = !com.droiddeck.launcher.input.DualScreen.builtIn(shown), onFocus = ::onOutputFocus)
             bottomGame = screen
             surfaceW = 0
             surfaceH = 0
@@ -5892,6 +5925,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback, com.droidde
                 Log.w(TAG, "could not show the game on ${shown.name}", e)
             }
             if (bottomGame === screen) Log.i(TAG, "requested game output on the bottom screen (display ${shown.displayId})")
+            if (bottomGame === screen) openSwappedPanel(shown)
         }
         refreshSecondScreenDisplays()
     }
@@ -5981,6 +6015,11 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback, com.droidde
                         },
                         modifier = Modifier.fillMaxSize(),
                     )
+                secondScreenMode == SecondScreenMode.PC_KEYBOARD ->
+                    androidx.compose.foundation.layout.Column(Modifier.fillMaxSize()) {
+                        com.droiddeck.launcher.ui.BottomScreenBar(bar(getString(SecondScreenMode.PC_KEYBOARD.label)))
+                        com.droiddeck.launcher.ui.PcKeyboardPanel(::sendPanelKey, Modifier.fillMaxWidth().weight(1f))
+                    }
                 secondScreenMode.controls && (secondScreenMode != SecondScreenMode.DECK_CONTROLS || SessionState.deckPad) ->
                     androidx.compose.foundation.layout.Column(Modifier.fillMaxSize()) {
                         when (secondScreenMode) {
@@ -6149,6 +6188,22 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback, com.droidde
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
+        uiHandler.removeCallbacks(outputFocusSettled)
+        if (!hasFocus && bottomGame?.takesFocus == true) uiHandler.postDelayed(outputFocusSettled, OUTPUT_FOCUS_SETTLE_MS)
+        else windowFocusChanged(hasFocus)
+    }
+
+    // Touching the session on an external screen moves window focus there; it has not left the session.
+    private val outputFocusSettled = Runnable {
+        if (!isDestroyed && !window.decorView.hasWindowFocus() && bottomGame?.focused != true) windowFocusChanged(false)
+    }
+
+    private fun onOutputFocus(hasFocus: Boolean) {
+        uiHandler.removeCallbacks(outputFocusSettled)
+        if (hasFocus) refreshClipboard() else uiHandler.postDelayed(outputFocusSettled, OUTPUT_FOCUS_SETTLE_MS)
+    }
+
+    private fun windowFocusChanged(hasFocus: Boolean) {
         if (!hasFocus) com.droiddeck.launcher.input.HomeButtonShortcuts.cancel(this)
         if (!hasFocus) backQamInput.cancel()
         if (!hasFocus) mouseBackInput.cancel()
@@ -6326,6 +6381,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback, com.droidde
         private const val PAUSED_FRAME_REDRAW_MS = 150L
         private const val BOTTOM_RECOVERY_MS = 1_000L
         private const val BOTTOM_RECOVERY_TRIES = 3
+        private const val OUTPUT_FOCUS_SETTLE_MS = 150L
         private const val TAG = "SessionActivity"
         private val frameGenGlobalLock = Any()
         private val frameGenGlobalGeneration = java.util.concurrent.atomic.AtomicLong(0L)

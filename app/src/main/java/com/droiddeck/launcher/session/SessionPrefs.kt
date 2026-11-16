@@ -123,6 +123,13 @@ object SessionPrefs {
 
     private fun secondScreenPanelKey(desktop: Boolean) = if (desktop) "secondScreenPanel.desktop" else "secondScreenPanel.game"
 
+    fun externalTopScreen(context: Context): Boolean =
+        prefs(context).getBoolean("externalTopScreen", com.droiddeck.launcher.BuildConfig.DESKTOP_ONLY)
+
+    fun setExternalTopScreen(context: Context, on: Boolean) {
+        prefs(context).edit().putBoolean("externalTopScreen", on).apply()
+    }
+
     /** The bottom-screen desktop takes touch as a trackpad unless the user switched it to direct touch. */
     fun bottomDesktopDirectTouch(context: Context): Boolean = prefs(context).getBoolean("bottomDesktopDirectTouch", false)
 

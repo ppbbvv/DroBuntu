@@ -20,11 +20,15 @@ class BottomGameScreen(
     private val callback: SurfaceHolder.Callback,
     private val onTouch: (MotionEvent) -> Boolean,
     private val onHover: (MotionEvent) -> Boolean,
+    val takesFocus: Boolean = false,
+    private val onFocus: (Boolean) -> Unit = {},
 ) : Presentation(activity, display) {
     val surfaceView = SurfaceView(getContext())
     val holder: SurfaceHolder get() = surfaceView.holder
 
     val hz: Float get() = display.mode.refreshRate
+
+    val focused: Boolean get() = takesFocus && window?.decorView?.hasWindowFocus() == true
 
     init {
         setCancelable(false)
@@ -36,7 +40,14 @@ class BottomGameScreen(
         val root = FrameLayout(context).apply { setBackgroundColor(Color.BLACK) }
         root.addView(surfaceView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         setContentView(root)
-        window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+        window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+            (if (takesFocus) 0 else WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE))
+        applyImmersiveMode()
+        surfaceView.setOnTouchListener { _, event -> onTouch(event) }
+        surfaceView.holder.addCallback(callback)
+    }
+
+    private fun applyImmersiveMode() {
         @Suppress("DEPRECATION")
         window?.decorView?.systemUiVisibility = (View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
             or View.SYSTEM_UI_FLAG_FULLSCREEN
@@ -44,8 +55,13 @@ class BottomGameScreen(
             or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
             or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
             or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION)
-        surfaceView.setOnTouchListener { _, event -> onTouch(event) }
-        surfaceView.holder.addCallback(callback)
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (!takesFocus) return
+        if (hasFocus) applyImmersiveMode()
+        onFocus(hasFocus)
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean =

@@ -132,6 +132,7 @@ object SessionState {
     @Volatile var secondScreenProvisional = false
     @Volatile var secondScreenAutomatic = false
     @Volatile var gameOnBottom = false
+    @Volatile var externalTopClaimed = false
 
     @Volatile var steamLibraryMounts: Map<String, java.io.File> = emptyMap()
 
