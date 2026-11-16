@@ -153,68 +153,9 @@ fun PcKeyboard(
 }
 
 @Composable
-fun PcKeyboardPanel(sendKey: (Int, Boolean) -> Unit, modifier: Modifier = Modifier) {
-    val mods = remember { mutableStateMapOf<Int, Int>() }
-    var capsOn by remember { mutableStateOf(false) }
-    val shifted = (mods[42] ?: MOD_OFF) != MOD_OFF || (mods[54] ?: MOD_OFF) != MOD_OFF
-
-    fun releaseOnceModifiers() {
-        for ((code, state) in mods.toMap()) if (state == MOD_ONCE) { sendKey(code, false); mods[code] = MOD_OFF }
-    }
-    fun press(pcKey: PcKey) {
-        if (pcKey.code in PC_MODIFIERS) {
-            when (mods[pcKey.code] ?: MOD_OFF) {
-                MOD_OFF -> { sendKey(pcKey.code, true); mods[pcKey.code] = MOD_ONCE }
-                MOD_ONCE -> mods[pcKey.code] = MOD_LOCKED
-                else -> { sendKey(pcKey.code, false); mods[pcKey.code] = MOD_OFF }
-            }
-            return
-        }
-        sendKey(pcKey.code, true)
-    }
-    fun release(pcKey: PcKey) {
-        if (pcKey.code in PC_MODIFIERS) return
-        sendKey(pcKey.code, false)
-        if (pcKey.code == 58) capsOn = !capsOn
-        releaseOnceModifiers()
-    }
-    androidx.compose.runtime.DisposableEffect(Unit) {
-        onDispose { for ((code, state) in mods.toMap()) if (state != MOD_OFF) sendKey(code, false) }
-    }
-
-    Column(
-        modifier.background(Color(0xFF101418))
-            .pointerInput(Unit) { awaitEachGesture { awaitFirstDown().consume(); waitForUpOrCancellation()?.consume() } }
-            .padding(horizontal = 6.dp, vertical = 5.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        for (row in PC_KEY_ROWS) {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth().weight(1f)) {
-                for (pcKey in row) {
-                    val state = mods[pcKey.code] ?: MOD_OFF
-                    val lit = state != MOD_OFF || (pcKey.code == 58 && capsOn)
-                    val label = when {
-                        pcKey.labelRes != 0 -> stringResource(pcKey.labelRes)
-                        shifted && pcKey.shifted != null -> pcKey.shifted
-                        pcKey.label.length == 1 && pcKey.label[0].isLetter() && (shifted xor capsOn) -> pcKey.label.uppercase()
-                        else -> pcKey.label
-                    }
-                    key(pcKey.code) {
-                        KeyCap(
-                            label, pcKey.weight, lit, locked = state == MOD_LOCKED, modifier = Modifier,
-                            onDown = { press(pcKey) }, onUp = { release(pcKey) }, large = true,
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun RowScope.KeyCap(
+internal fun RowScope.KeyCap(
     label: String, weight: Float, lit: Boolean, locked: Boolean,
-    modifier: Modifier, onDown: () -> Unit, onUp: () -> Unit, large: Boolean = false,
+    modifier: Modifier, onDown: () -> Unit, onUp: () -> Unit, large: Boolean = false, hint: String? = null,
 ) {
     val pal = LocalPalette.current
     val src = remember { MutableInteractionSource() }
@@ -255,8 +196,12 @@ private fun RowScope.KeyCap(
             .focusable(interactionSource = src),
     ) {
         Text(
-            label, fontSize = if (label.length > 2) (if (large) 13.sp else 11.sp) else (if (large) 21.sp else 15.sp), fontWeight = FontWeight.SemiBold,
+            label, fontSize = if (large) (if (label.length > 1) 12.sp else 21.sp) else (if (label.length > 2) 11.sp else 15.sp), fontWeight = FontWeight.SemiBold,
             color = Color.White, textAlign = TextAlign.Center, maxLines = 1,
+        )
+        if (hint != null) Text(
+            hint, fontSize = 9.sp, lineHeight = 10.sp, color = Color.White.copy(alpha = 0.45f), maxLines = 1,
+            modifier = Modifier.align(Alignment.TopEnd).padding(top = 2.dp, end = 4.dp),
         )
     }
 }

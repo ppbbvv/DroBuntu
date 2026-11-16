@@ -357,7 +357,9 @@ class SecondScreenPresentation(
         val view = androidx.compose.ui.platform.ComposeView(context).apply {
             setContent {
                 PresentationWindows {
-                    DroidDeckTheme { PcKeyboardPanel(sessionActivity::sendPanelKey, androidx.compose.ui.Modifier.fillMaxSize()) }
+                    DroidDeckTheme {
+                        PcKeyboardPanel(sessionActivity::sendPanelKey, sessionActivity::panelPadTouch, androidx.compose.ui.Modifier.fillMaxSize())
+                    }
                 }
             }
         }

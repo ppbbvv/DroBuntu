@@ -3859,12 +3859,12 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback, com.droidde
         WaylandCompositor.nativeSendSceneInput(WaylandCompositor.SCENE_AXIS_FINGER, 0, 0)
     }
 
-    private fun placeTouchpadAtGuest(rect: android.graphics.RectF) {
+    private fun placeTouchpadAtGuest(rect: android.graphics.RectF, pad: TouchpadGestures = touchpad) {
         if (pointerLocked || !CompositorHost.isStarted || outputView().width <= 0 || outputView().height <= 0) return
         if (!WaylandCompositor.nativeCursorInputPos(cursorPosBuf)) return
         val x = cursorPosBuf[0] / InputSpace.WIDTH.toFloat() * outputView().width
         val y = cursorPosBuf[1] / InputSpace.HEIGHT.toFloat() * outputView().height
-        touchpad.place(x.coerceIn(rect.left, rect.right), y.coerceIn(rect.top, rect.bottom))
+        pad.place(x.coerceIn(rect.left, rect.right), y.coerceIn(rect.top, rect.bottom))
     }
 
     private fun moveLockedPointer(x: Float, y: Float) {
@@ -5874,6 +5874,41 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback, com.droidde
         if (CompositorHost.isStarted) sendGuestKey(code, down, 32)
     }
 
+    private val panelPad: TouchpadGestures by lazy {
+        TouchpadGestures(PointerGestures.slop(this), object : PointerGestures.Listener {
+            override fun onMove(x: Float, y: Float) {
+                pointerListener.onMove(x, y)
+                if (pointerLocked) drawnRect()?.let { panelPad.place(it.centerX(), it.centerY()) }
+            }
+            override fun onButton(button: Int, pressed: Boolean, x: Float, y: Float) = pointerListener.onButton(button, pressed, x, y)
+            override fun onWheel(steps: Int) = pointerListener.onWheel(steps)
+            override fun onLongPress() = pointerListener.onLongPress()
+            override fun onScroll(dx: Float, dy: Float) = pointerListener.onScroll(dx, dy)
+            override fun onScrollEnd() = pointerListener.onScrollEnd()
+            override fun onZoom(steps: Int) = pointerListener.onZoom(steps)
+        })
+    }
+
+    fun panelPadTouch(event: MotionEvent, padWidth: Int): Boolean {
+        val rect = (if (pointerLocked) drawnRect() else pointerSurfaceRect())
+            ?.takeIf { CompositorHost.isStarted && !pipUi && !SessionState.suspended }
+        if (rect == null) {
+            panelPad.cancel()
+            return false
+        }
+        if (panelPad.bounds != rect) {
+            val fresh = panelPad.bounds.width() <= 1f
+            panelPad.bounds = rect
+            if (fresh) panelPad.place(rect.centerX(), rect.centerY())
+        }
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            panelPad.desktop = SessionState.mode == SessionService.MODE_DESKTOP
+            panelPad.sensitivity = com.droiddeck.launcher.input.PadTouchStream.sensitivity(rect.width(), padWidth)
+            placeTouchpadAtGuest(rect, panelPad)
+        }
+        return panelPad.onTouch(event)
+    }
+
     private fun putGameOnBottom(on: Boolean) {
         if (on && bottomGame == null && bottomGameDisplay() == null) {
             android.widget.Toast.makeText(this, R.string.swap_screens_unavailable, android.widget.Toast.LENGTH_SHORT).show()
@@ -6018,7 +6053,7 @@ class SessionActivity : ComponentActivity(), SurfaceHolder.Callback, com.droidde
                 secondScreenMode == SecondScreenMode.PC_KEYBOARD ->
                     androidx.compose.foundation.layout.Column(Modifier.fillMaxSize()) {
                         com.droiddeck.launcher.ui.BottomScreenBar(bar(getString(SecondScreenMode.PC_KEYBOARD.label)))
-                        com.droiddeck.launcher.ui.PcKeyboardPanel(::sendPanelKey, Modifier.fillMaxWidth().weight(1f))
+                        com.droiddeck.launcher.ui.PcKeyboardPanel(::sendPanelKey, ::panelPadTouch, Modifier.fillMaxWidth().weight(1f))
                     }
                 secondScreenMode.controls && (secondScreenMode != SecondScreenMode.DECK_CONTROLS || SessionState.deckPad) ->
                     androidx.compose.foundation.layout.Column(Modifier.fillMaxSize()) {
