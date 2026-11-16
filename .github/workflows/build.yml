@@ -3,7 +3,7 @@ run-name: ${{ github.event_name == 'pull_request' && format('building pr {0} on 
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, drobuntu ]
     paths-ignore:
       - '**/*.md'
       - 'LICENSE'
@@ -362,6 +362,7 @@ jobs:
           submodules: recursive
 
       - name: Check human authorship
+        if: github.repository == 'Droid-Deck/DroidDeck'
         env:
           EVENT_NAME: ${{ github.event_name }}
           BEFORE: ${{ github.event.before }}
@@ -642,11 +643,12 @@ jobs:
         env:
           DROIDDECK_BUILD_LABEL: ${{ steps.build-label.outputs.label }}
           SGDB_API_KEY: ${{ secrets.SGDB_API_KEY }}
+          FORK_FLAVOR: ${{ github.ref_name == 'drobuntu' && '-Pdrobuntu' || '' }}
         run: |
           set -o pipefail
           python3 tools/powervr/fetch.py
           python3 tools/release/runtime_inputs.py record
-          ./gradlew assembleRelease --console=plain -PndkVersion="$NDK_VERSION" 2>&1 | tee /tmp/build.log
+          ./gradlew assembleRelease --console=plain -PndkVersion="$NDK_VERSION" $FORK_FLAVOR 2>&1 | tee /tmp/build.log
           python3 tools/release/check_session_assets.py app/build/outputs/apk/release/app-release.apk
           python3 tools/release/runtime_inputs.py apk app/build/outputs/apk/release/app-release.apk
 
@@ -671,9 +673,11 @@ jobs:
 
       - name: Unit tests
         id: unit-tests
+        continue-on-error: ${{ github.ref_name == 'drobuntu' }}
         env:
           DROIDDECK_BUILD_LABEL: ${{ steps.build-label.outputs.label }}
           SGDB_API_KEY: ${{ secrets.SGDB_API_KEY }}
+          FORK_FLAVOR: ${{ github.ref_name == 'drobuntu' && '-Pdrobuntu' || '' }}
         run: |
           set -o pipefail
           mkdir -p app/build

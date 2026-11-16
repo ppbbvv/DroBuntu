@@ -1254,7 +1254,8 @@ object SessionPrefs {
 
     fun startupSession(context: Context): String {
         val p = prefs(context)
-        return p.getString("startupSession", null) ?: if (p.getBoolean("runSteamAtStartup", false)) STARTUP_STEAM else STARTUP_OFF
+        return p.getString("startupSession", null) ?: if (com.droiddeck.launcher.BuildConfig.DESKTOP_ONLY) STARTUP_DESKTOP
+            else if (p.getBoolean("runSteamAtStartup", false)) STARTUP_STEAM else STARTUP_OFF
     }
 
     fun setStartupSession(context: Context, id: String) {

@@ -39,16 +39,21 @@ internal object NavTabs {
         return out
     }
 
-    fun available(s: FrontEndState, key: String): Boolean = when (key) {
-        "android-apps" -> s.isHomeApp
-        "agent" -> AgentHost.available
+    private val DESKTOP_ONLY_OFF = setOf("steam", "games", "soundtracks", "stores", "agent", "updates")
+
+    private fun desktopOnlyOff(key: String) = com.droiddeck.launcher.BuildConfig.DESKTOP_ONLY && key in DESKTOP_ONLY_OFF
+
+    fun available(s: FrontEndState, key: String): Boolean = when {
+        desktopOnlyOff(key) -> false
+        key == "android-apps" -> s.isHomeApp
+        key == "agent" -> AgentHost.available
         else -> true
     }
 
     fun hideable(key: String) = key != "setup"
 
     fun place(s: FrontEndState, key: String): TabPlace = when {
-        featureOff(s, key) || key in hidden -> TabPlace.HIDDEN
+        desktopOnlyOff(key) || featureOff(s, key) || key in hidden -> TabPlace.HIDDEN
         key in shelved -> TabPlace.MORE
         else -> TabPlace.BAR
     }
